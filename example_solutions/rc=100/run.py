@@ -16,7 +16,7 @@ dt = 1e4*prm.ys
 
 for i in range(10000):
 
-   if model.core.r_snow <= 0:
+   if model.core.r_snow == 0:
       break
 
    model.mantle.Q_cmb = 1e9
@@ -34,6 +34,7 @@ plt.plot(time, prm.r_cmb/1000-r_snow)
 plt.title('Snow zone thickness [km]')
 plt.xlabel('time [Myrs]')
 plt.show()
+
 
 plt.plot(time, conc_l)
 plt.title('Sulphur concentration [wt%]')
