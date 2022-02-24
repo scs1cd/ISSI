@@ -1,5 +1,3 @@
-import sys
-sys.path.append('../../')
 import numpy as np
 import matplotlib.pyplot as plt
 from thermal_history.model import Parameters, setup_model
