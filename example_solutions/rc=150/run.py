@@ -4,7 +4,7 @@ import numpy as np
 import thermal_history as th
 
 #Load parameters
-prm = th.model.Parameters(('rc=100_params.py',))
+prm = th.model.Parameters(('rc=150_params.py',))
 
 #Setup model
 model = th.model.setup_model(prm, core_method='leeds')
@@ -26,7 +26,7 @@ for i in range(10000):
 # import pickle
 # data = pickle.load(open('rc=100.pik', 'rb'))
 
-#Plot data compared
+#Plot data
 data = model.save_dict_to_numpy_array()
 core = data['core']
 time = core['time']/(1e6*prm.ys)

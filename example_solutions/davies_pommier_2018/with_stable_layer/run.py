@@ -16,6 +16,7 @@ for i in range(1000):
     model.evolve(dt)
 
 
+#Plot final radial profiles
 r = model.core.profiles['r']/10000
 T = model.core.profiles['T']
 Tm = model.core.profiles['Tm']
@@ -26,10 +27,5 @@ plt.xlabel('Radius [km]')
 plt.ylabel('K')
 plt.show()
 
+model.write_data('davies_pommier_2018_with_layer.pik')
 
-try:
-    model.write_data('davies_pommier_2018_with_layer.pik')
-except Exception as e:
-    print(e)
-
-breakpoint()
