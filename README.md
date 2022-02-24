@@ -9,4 +9,4 @@ If thermal_history is not in your $PYTHONPATH variable (see README from the ther
 import sys
 sys.path.append('/full/path/to/directory/containg_thermal_history')
 ```
-before thermal_history is imported. Windows users beware, you'll need to escape each backslash (e.g. C:\\user\\folder) and watch out for special unicode characters if copy and pasting from the file browser, you may need to type it out manually.
+before thermal_history is imported. Windows users beware, you'll need to escape each backslash and watch out for special unicode characters if copy and pasting from the file browser, you may need to type it out manually.
