@@ -128,7 +128,6 @@ plt.xlabel('time [Myrs]')
 plt.title('Sulphur concentration [wt%]')
 plt.show()
 
-breakpoint()
 
 
 
