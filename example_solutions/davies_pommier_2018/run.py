@@ -16,5 +16,5 @@ for i in range(1000):
 
 core = model.save_dict['core']
 
-model.write_data('davies_pommier_2018.pik')
+model.write_data('davies_pommier_2018.pik', overwrite=False)
 
