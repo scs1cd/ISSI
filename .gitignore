@@ -3,3 +3,4 @@ __pycache__
 *.log
 .vscode
 OUT_profiles.zip
+.ipynb_checkpoints
