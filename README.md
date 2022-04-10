@@ -19,3 +19,4 @@ Note, for using jupyter notebook's, you may have to install jupyter first and ma
 conda install jupyter ipykernel
 python -m ipykernel install --user --name thermal_history --display-name "Python (thermal_history)"
 ```
+This should add the thermal_history environent to the list of available kernels from within jupyter.
