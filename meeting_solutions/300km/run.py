@@ -26,17 +26,19 @@ for k in k_array:
 
       #Calculate material properties from EOS for given composition at CMB. Or can comment this out and use those defined in parameters file.
       properties = eos.liquidCore(S, prm.P_cmb/1e9, prm.T_cmb)
-      prm.core_cp_params[0]             = properties['Cp']     #Specific heat. Seems to be too low?
+      prm.core_cp_params[0]             = 1000*properties['Cp']/properties['M']     #Specific heat. Seems to be too low?
       prm.core_alpha_T_params[0]        = properties['alpha']  #Thermal expansivity
       prm.core_liquid_density_params[0] = properties['rho']    #Density of liquid.
+
+      breakpoint()
 
       for q_cmb in q_cmb_array:
 
          #Setup model
          model = th.model.setup_model(prm, core_method='leeds', stable_layer_method='leeds_thermal')
 
-         model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set CMB heat flow
-
+         # model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set CMB heat flow
+         model.mantle.Q_cmb = 1e12
          #Run model, breaking when snow zone covers whole core
          dt = 1e4*prm.ys
          for i in range(10000):
@@ -46,6 +48,7 @@ for k in k_array:
 
             #Save radial profiles at each time step
             name = f'./output/k={k:.0f}_S={S*100:.0f}_q={q_cmb:.0f}'
+            # name = 'test'
             model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
 
             model.evolve(dt, print_freq=10) #Evolve model 1 timestep, printing progress every 10 steps.
