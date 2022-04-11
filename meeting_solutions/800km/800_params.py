@@ -74,7 +74,7 @@ lambda_liq                 = [0]  # Linear corrections to chemical potentials (l
 
 dmu                        = [0]  # Change in chemical potential between solid and liquid. List(float)
 
-n_profiles                 = 1000  # Number of nodes used in radial profiles for core properties. Float
+n_profiles                 = 500  # Number of nodes used in radial profiles for core properties. Float
 
 P_cmb                      = 6e9  # CMB pressure. Float
 
