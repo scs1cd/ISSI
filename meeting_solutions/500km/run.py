@@ -43,7 +43,7 @@ for S in S_array:
       while not model.critical_failure and model.it < 100000:
 
          #Write profiles
-         model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
+         #model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
 
          model.evolve(dt, print_freq=100, verbose=True) #Evolve model 1 timestep, printing progress every 10 steps.
 
