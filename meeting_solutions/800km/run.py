@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from scipy.integrate import trapezoid
+import sys
+
+sys.path.append('../')#Make directory above visible to import our custom setup_model
+import eos_setup_model
 
 import thermal_history as th
 from thermal_history.core_models.leeds.routines import rivoldini_eos as eos
@@ -9,8 +13,7 @@ from thermal_history.core_models.leeds.routines import rivoldini_eos as eos
 #Load parameters
 prm = th.model.Parameters(('800_params.py',))
 
-#Loop over different CMB heat fluxes, compositions and thermal conductivities
-k_array     = [5, 10, 15]
+#Loop over different CMB heat fluxes, compositions
 q_cmb_array = [1, 5, 10]        #mW/m^2
 S_array     = [0.05, 0.1, 0.15]
 
@@ -19,55 +22,43 @@ if not os.path.isdir('output'):
    os.mkdir('output')
 
 #Begin loops
-for k in k_array:
-   prm.core_conductivity = [k] #Set conductivity
+for S in S_array:
+   prm.conc_l[0] = S  #Set composition
 
-   for S in S_array:
-      prm.conc_l[0] = S  #Set composition
+   for q_cmb in q_cmb_array:
 
-      #Calculate material properties from EOS for given composition at CMB. Start with initial guess of CMB P/T and
-      #Iterate to self consistently find properties at volume average P/T
-      P_av = prm.P_cmb
-      T_av = prm.T_cmb
+      #Name format for output files
+      name = f'./output/S={S*100:.0f}_q={q_cmb:.0f}'
 
-      for it in range(10):
-         properties = eos.liquidCore(S, P_av/1e9, T_av)
-         prm.core_cp_params[0]             = 1000*properties['Cp']/properties['M']   #Specific heat
-         prm.core_alpha_T_params[0]        = properties['alpha']  #Thermal expansivity
-         prm.core_liquid_density_params[0] = properties['rho']    #Density of liquid.
+      #Setup model
+      model = eos_setup_model.setup_model(prm, verbose=True)
 
-         model = th.model.setup_model(prm, core_method='leeds', stable_layer_method='leeds_thermal', verbose=False)
-         r, T, P = model.core.profiles['r'], model.core.profiles['T'], model.core.profiles['P']
-         P_av = trapezoid(P*r**2, x=r)/((1/3)*trapezoid(r**2, x=r))
-         T_av = trapezoid(T*r**2, x=r)/((1/3)*trapezoid(r**2, x=r))
+      model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set constant CMB heat flow
 
-         #Force T_cmb to be at the melting temp so snow starts straight away.
-         prm.T_cmb = model.core.profiles['Tm'][-1]
+      #Run model, breaking when snow zone covers whole core or non top-down freezing occurs
+      #either will cause model.critical_failure = True as it is not defined in the model
+      #how proceed in these scenarios
 
-      for q_cmb in q_cmb_array:
+      dt = 1e4*prm.ys
+      while not model.critical_failure and model.it < 100000:
 
-         #Setup model
-         model = th.model.setup_model(prm, core_method='leeds', stable_layer_method='leeds_thermal')
+         #Write profiles
+         # model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
 
-         model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set constant CMB heat flow
+         model.evolve(dt, print_freq=100, verbose=True) #Evolve model 1 timestep, printing progress every 10 steps.
 
-         #Run model, breaking when snow zone covers whole core
-         dt = 1e4*prm.ys
-         for i in range(10000):
+      #Anything other than this is a 'failed' model
+      if not model.critical_failure_reason == 'Snow zone covers whole core': 
+         name = name+'_FAILED'
 
-            if model.core.r_snow == 0:
-               break
+      # save model output
+      model.save_dict['core']['critical_failure_reason'] = model.critical_failure_reason #Save the reason for critical failure.
+      model.write_data(name, overwrite=True)
 
-            #Save radial profiles at each time step
-            name = f'./output/k={k:.0f}_S={S*100:.0f}_q={q_cmb:.0f}'
 
-            #Write profiles
-            # model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
 
-            model.evolve(dt, print_freq=1) #Evolve model 1 timestep, printing progress every 10 steps.
 
-         # save model output
-         model.write_data(name, overwrite=True)
+
 
 
 
