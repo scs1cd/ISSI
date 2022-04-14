@@ -1,3 +1,7 @@
+'''Custom function to set model parameters based on the EOS provided by Atillio.
+Can be imported and called in place of thermal_history.model.setup_model. Avoids needing to copy
+and paste this code anytime we setup a model with the EOS parameters.'''
+
 from scipy.integrate import trapezoid
 import numpy as np
 
@@ -5,7 +9,7 @@ import thermal_history as th
 import thermal_history.core_models.leeds.routines.rivoldini_eos as eos
 
 
-def setup_model(prm, verbose=True):
+def setup_model(prm, core_method=None, stable_layer_method=None, verbose=True):
     '''Set self-consistent model paramters using EOS and return model ready to run.'''
 
     #Calculate material properties from EOS for given composition at CMB. Start with initial guess of CMB P/T and
@@ -32,7 +36,7 @@ def setup_model(prm, verbose=True):
     #Set change in entropy on melting used for latent heat
     s_solid = eos.fccFe(P_av/1e9, T_av)['S']
     s_liq   = eos.liquidFe(P_av/1e9, T_av)['S']
-    delta_s = (s_liq-s_solid)/prm.Na  #J/K/atom. 
+    delta_s = (s_liq-s_solid)/prm.Na  #code uses J/K/atom. 
     prm.entropy_melting_params = [delta_s]
     
     #Finite difference to approximate alpha_c
@@ -47,4 +51,4 @@ def setup_model(prm, verbose=True):
     prm.core_conductivity_params = [kFeS(S, T_av)]
 
     #Setup and return final model
-    return th.model.setup_model(prm, core_method='leeds', stable_layer_method='leeds_thermal', verbose=verbose)
+    return th.model.setup_model(prm, core_method=core_method, stable_layer_method=stable_layer_method, verbose=verbose)

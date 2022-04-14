@@ -4,11 +4,15 @@ import os
 from scipy.integrate import trapezoid
 import sys
 
-sys.path.append('../')#Make directory above visible to import our custom setup_model
+sys.path.append('../useful_scripts')#Make useful scripts directory visible to import our custom setup_model
 import eos_setup_model
 
 import thermal_history as th
 from thermal_history.core_models.leeds.routines import rivoldini_eos as eos
+
+
+#Include a stable layer?
+stable_layer = True  #True or false
 
 #Load parameters
 prm = th.model.Parameters(('500_params.py',))
@@ -29,9 +33,19 @@ for S in S_array:
 
       #Name format for output files
       name = f'./output/S={S*100:.0f}_q={q_cmb:.0f}'
+      if not stable_layer:
+         name += '_adiabatic' #Add adiabatic if not using a stable layer
+
+      if stable_layer:
+         stable_layer_method='leeds_thermal'
+         prm.stable_layer = True
+      else:
+         stable_layer_method=None
+         prm.stable_layer = False
+
 
       #Setup model
-      model = eos_setup_model.setup_model(prm, verbose=True)
+      model = eos_setup_model.setup_model(prm, core_method='leeds', stable_layer_method=stable_layer_method, verbose=True)
 
       model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set constant CMB heat flow
 
@@ -40,20 +54,25 @@ for S in S_array:
       #how proceed in these scenarios
 
       dt = 1e4*prm.ys
-      while not model.critical_failure and model.it < 100000:
+      while not model.critical_failure and model.it < (4.5e9*prm.ys/dt):
 
-         #Write profiles
-         #model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
+         #Write profiles Takes up lots of space! lots of files!
+         # model.write_profiles(name+f'_profiles_{model.it}', overwrite=True, verbose=False)
 
          model.evolve(dt, print_freq=100, verbose=True) #Evolve model 1 timestep, printing progress every 10 steps.
 
+      #Reached maximum iterations allowed
+      if model.it == (4.5e9*prm.ys/dt):
+         model.critical_failure_reason = True
+         model.critical_failure_reason = 'Reached maximum iteration (4.5 Gyrs time total)'
+
+      #Anything other than this is a 'failed' model
       if not model.critical_failure_reason == 'Snow zone covers whole core':
          name = name+'_FAILED'
 
       # save model output
       model.save_dict['core']['critical_failure_reason'] = model.critical_failure_reason #Save the reason for critical failure.
       model.write_data(name, overwrite=True)
-
 
 
 
