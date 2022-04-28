@@ -22,9 +22,15 @@ Solutions produced during the in-person meeting are in the meeting_solutions fol
 
 The plots folder containes jupyter notebooks to produce a range of figures.
 
-Note, for using jupyter notebook's, you may have to install jupyter first and make the thermal_history conda environment visible to jupyter. From within the correct conda environment:
+Note, for using jupyter notebook's, you may have to install jupyter first:
+
 ```
 conda install jupyter ipykernel
+```
+
+If you wish to use the `thermal_history` package within a notebook you may have to make the thermal_history conda environment visible to jupyter. From within the correct conda environment:
+
+```
 python -m ipykernel install --user --name thermal_history --display-name "Python (thermal_history)"
 ```
 This should add the thermal_history environent to the list of available kernels from within jupyter.
@@ -32,4 +38,4 @@ This should add the thermal_history environent to the list of available kernels 
 
 #### Useful scripts
 
-An aptly named folder called useful_scripts contains ... some useful scripts. `eos_setup_model.py` sets up self-consistent model parameters using Tilio's EOS and is used by the code in `meeting_solutions`. `rivoldini_eos.py` is a simple python script that can be run to print out all quantities calculated by Tilio's EOS code (specify P/T/S conditions at the top of the file). Finally, for those less interested in using python, `write_txt_files.py` takes one of the .pik output files and writes some of the more commonly needed variables to txt files. Use by calling the script from the command line, giving the .pik file as input (e.g. `python write_txt_files.py example.pik`)
+An aptly named folder called `useful_scripts` contains ... some useful scripts. `eos_setup_model.py` sets up self-consistent model parameters using Tilio's EOS and is used to produce the range of solutions in `meeting_solutions`. `rivoldini_eos.py` is a simple python script that can be run to print out all quantities calculated by Tilio's EOS code (specify P/T/S conditions at the top of the file). Finally, for those less interested in using python, `write_txt_files.py` takes one of the .pik output files and writes some of the more commonly needed variables to txt files. Use by calling the script from the command line, giving the .pik file as input (e.g. `python write_txt_files.py example.pik`)
