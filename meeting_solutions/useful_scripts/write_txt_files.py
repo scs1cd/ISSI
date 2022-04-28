@@ -10,8 +10,10 @@ all python distributions) and numpy.
 
 import pickle
 import numpy as np
+import sys
 
-file = '../500km/output/S=10_q=10.pik'
+file = sys.argv[1]
+# file = '../500km/output/S=10_q=10.pik'
 
 #Read data
 data = pickle.load(open(file,'rb'))

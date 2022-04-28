@@ -1,6 +1,8 @@
 __pycache__
+meeting_solutions/plots/scaling_plots
+meeting_solutions/plots/scaling_plots_adiabatic
 *.pik
 *.log
 .vscode
-OUT_profiles.zip
 .ipynb_checkpoints
+*.DS_store

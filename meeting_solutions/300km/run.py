@@ -12,7 +12,7 @@ from thermal_history.core_models.leeds.routines import rivoldini_eos as eos
 
 
 #Include a stable layer?
-stable_layer = True  #True or false
+stable_layer = False  #True or false
 
 #Load parameters
 prm = th.model.Parameters(('300_params.py',))
@@ -20,6 +20,9 @@ prm = th.model.Parameters(('300_params.py',))
 #Loop over different CMB heat fluxes, compositions
 q_cmb_array = [1, 5, 10]        #mW/m^2
 S_array     = [0.05, 0.1, 0.15]
+
+#Different timesteps for different heat flows to speed up calculation (yrs).
+timesteps = [5e5, 1e5, 1e4]  
 
 #Make directory to store output if not already.
 if not os.path.isdir('output'):
@@ -29,7 +32,7 @@ if not os.path.isdir('output'):
 for S in S_array:
    prm.conc_l[0] = S  #Set composition
 
-   for q_cmb in q_cmb_array:
+   for q_cmb, _dt in zip(q_cmb_array, timesteps):
 
       #Name format for output files
       name = f'./output/S={S*100:.0f}_q={q_cmb:.0f}'
@@ -45,7 +48,8 @@ for S in S_array:
 
 
       #Setup model
-      model = eos_setup_model.setup_model(prm, core_method='leeds', stable_layer_method=stable_layer_method, verbose=True)
+      print(f'\nIterating S={S*100:.0f}, q={q_cmb:.0f}')
+      model = eos_setup_model.setup_model(prm, core_method='leeds', stable_layer_method=stable_layer_method, verbose=False)
 
       model.mantle.Q_cmb = q_cmb*1e-3 * 4*np.pi*prm.r_cmb**2 #Set constant CMB heat flow
 
@@ -53,7 +57,7 @@ for S in S_array:
       #either will cause model.critical_failure = True as it is not defined in the model
       #how proceed in these scenarios
 
-      dt = 1e4*prm.ys
+      dt = _dt*prm.ys
       while not model.critical_failure and model.it < (4.5e9*prm.ys/dt):
 
          #Write profiles Takes up lots of space! lots of files!
