@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Routines provided by A. Rivoldini. Important function to use for model is liquidus (at bottom of file).
-
 Description
 ------------------------------
 The following code contains routines to compute the Equation of States (EoS)
-for l-Fe-S and l-Fe-Si based on Terasaki 2019 (10.1029/2019JE005936).    
+for l-Fe-S based on Terasaki 2019 (10.1029/2019JE005936).    
 """
 
 import numpy as np
@@ -13,18 +13,55 @@ from scipy import integrate
 from scipy import optimize
 
 
-#Code will print numbers at the P/T/S conditions specified here
-
-P = 5    #Pressure, Gpa
-T = 1800 #Temperature, K
-S = 0.05 #Sulphur mass fraction
-
-
 param = {'MFe':55.845,
          'MS':32.065,
+         'MC':12.011,
          'MFeS':55.845+32.065,
-         'RGas':8.31446}
-     
+         'RGas':8.31446,
+         'LorenzNumber':2.445}
+         
+
+class eosDinsdale:
+    def __init__(self,M0,V0,KT0,KTP0,a0,a1,a,b,c,d,e,f,g):
+        self.M0=M0
+        self.V0=V0
+        self.KT0=KT0*1.e9
+        self.KTP0=KTP0
+        self.a0=a0
+        self.a1=a1
+        self.a=a
+        self.b=b
+        self.c=c
+        self.d=d
+        self.e=e
+        self.f=f
+        self.g=g
+    
+    def eos(self,px,T):
+        M0,V0,KT0,KTP0=self.M0,self.V0,self.KT0,self.KTP0
+        a0,a1=self.a0,self.a1
+        a,b,c,d,e,f,g=self.a,self.b,self.c,self.d,self.e,self.f,self.g
+        p=1.e9*px
+        self.GE=a + g/T**3 + f/T**2 +e/T+b*T+d*T**2 +(np.exp(a0*T+(a1*T**2)/2.)*KT0*(-1+(1+(KTP0*p)/KT0)**((-1 + KTP0)/KTP0))*V0)/(-1 + KTP0)+c*T*np.log(T)
+        self.S=-2*d - (12*g)/T**5 - (6*f)/T**4 - (2*e)/T**3-c/T-(np.exp(a0*T+(a1*T**2)/2.)*KT0*(-1+(1+(KTP0*p)/KT0)**((-1+KTP0)/KTP0))*(a0**2+a1+2*a0*a1*T+a1**2*T**2)*V0)/(-1+KTP0)
+        self.Cp=-(T*(2*d+(12*g)/T**5+(6*f)/T**4+(2*e)/T**3+c/T+(np.exp(a0*T+(a1*T**2)/2.)*KT0*(-1+(1+(KTP0*p)/KT0)**((-1+KTP0)/KTP0))*(a0**2+a1+2*a0*a1*T+a1**2*T**2)*V0)/(-1+KTP0)))
+        self.V=((np.exp(a0*T+(a1*T**2)/2.)*V0)/(1+(KTP0*p)/KT0)**(1/KTP0))
+        self.alpha=a0+a1*T
+        self.KT=KT0+KTP0*p
+        self.gamma=1/(self.Cp/(self.alpha*self.KT*self.V)-self.alpha*T)
+        self.KS=self.KT*(1+self.gamma*self.alpha*T)
+        self.CV=self.alpha*self.V*self.KT/self.gamma
+        self.V=1.e6*self.V
+        self.rho=1.e3*self.M0/self.V
+        self.vp=np.sqrt(self.KS/self.rho)
+        self.KT=1.e-9*self.KT
+        self.KS=1.e-9*self.KS
+        
+        
+    def __call__(self, p,T):
+        self.eos(p,T)
+        return {'M':self.M0,'V':self.V,'rho':self.rho,'alpha':self.alpha,'KT':self.KT,'KS': self.KS, 'gamma':self.gamma,'Cp': self.Cp, 'CV':self.CV,'vp':self.vp,'S':self.S,'GE':self.GE}
+
 class eosAndersonGrueneisen:
     def __init__(self,M0,p0,T0,V0,alpha0,KT0,KTP0,deltaT,kappa,
                  GibbsE=None,gamma0=None,q=None):
@@ -36,10 +73,17 @@ class eosAndersonGrueneisen:
     				
         if (GibbsE is not None):
             self.GibbsFlag=True
+            self.VZFlag=False
+            self.gamma0=0
+            self.q=0  
+        elif (GibbsE is None and gamma0 is None and q is None):
+            self.GibbsFlag=False
+            self.VZFlag=True
             self.gamma0=0
             self.q=0
         else:
             self.GibbsFlag=False
+            self.VZFlag=False
             self.gamma0=gamma0
             self.q=q
     
@@ -118,6 +162,12 @@ class eosAndersonGrueneisen:
             Cp=-T*(self.Gibbs(p,T+deltaTemp)-2*Gibbs+self.Gibbs(p,T-deltaTemp))/deltaTemp**2 # numerical second derivative of G with respect to T
             gamma=1/(Cp/(alpha*KT*V*1E+3)-alpha*T) # factor 1000 for conversion of GPa and cm^3/mol
             KS=KT*(1+gamma*alpha*T)
+        elif (self.VZFlag):
+            Gibbs=0
+            S=0
+            gamma=(1/2*KTP-5/6+2/9*p/KT)/(1-4/3*p/KT)
+            KS=KT*(1+gamma*alpha*T)
+            Cp=1E+3*alpha*V*KS/gamma
         else:
             Gibbs=0
             S=0
@@ -146,84 +196,273 @@ class eosAndersonGrueneisen:
         
                	     
 class solution:
-    def __init__(self,eos1,eos2,Vex):
+    def __init__(self,eos1,eos2,ex,FeX=True):
         self.eM1=eos1
         self.eM2=eos2
         self.chi=np.zeros(2)
-        self.Vex=Vex
+        self.ex=ex
         self.M0=0
         self.V=0
         self.Cp=0
         self.alpha=0
+        self.alphaC=0
         self.KT=0
         self.gamma=0
         self.KS=0
         self.CV=0
         self.rho=0
         self.vp=0
+        self.FeX=FeX
         
-    def __call__(self, x, p,T):
-        self.eM1.eos(p,T)
-        self.eM2.eos(p,T)
+    def __call__(self, x, p,T): # x is wt fraction of light element X
+        self.eM1.eos(p,T) # Fe
+        self.eM2.eos(p,T) # FeX or X
+        MFe=self.eM1.M0
         chi = np.zeros(2)
-        mFe=self.eM1.M0
-        mS = self.eM2.M0-self.eM1.M0
-        chi[1]=mFe*x/(mS+x*(mFe-mS)) # convert weight fraction to molar fraction S
-        chi[1]=chi[1]/(1-chi[1]) # convert to molar fraction of FeS
+        if (self.FeX):
+            MX=self.eM2.M0-self.eM1.M0 # molar mass of X
+            chi[1]=x/(1-x)*MFe/MX # convert weight fraction of X to molar fraction of FeX
+            dxdchi=MFe*MX/(MFe+MX*chi[1])**2 # derivative of weight fraction with respect to molar fraction of X
+        else:
+            MX=self.eM2.M0
+            chi[1]=MFe*x/(MX+x*(MFe-MX)) # convert weight fraction of X to molar fraction of X
+            dxdchi=(MX*MFe)/(MFe*(-1+chi[1]) - MX*chi[1])**2            
         chi[0]=1-chi[1]
-        Vexx=self.Vex(chi,p,T) #[Vex,dVex/dp,dVex/dT]
+        ex=self.ex(chi,p,T)
         M=[self.eM1.M0,self.eM2.M0]
         V=[self.eM1.V,self.eM2.V]
         Cp=[self.eM1.Cp,self.eM2.Cp]
         KT=[self.eM1.KT,self.eM2.KT]
         alpha=[self.eM1.alpha,self.eM2.alpha]
         self.M0=np.dot(M,chi)
-        self.V=np.dot(V,chi)+Vexx[0]
+        self.V=np.dot(V,chi)+ex['V']
         self.Cp=np.dot(Cp,chi)
-        self.alpha=(np.dot([alpha[0]*V[0],alpha[1]*V[1]],chi)+Vexx[2])/self.V
-        self.KT=-self.V/(-np.dot([V[0]/KT[0],V[1]/KT[1]],chi)+Vexx[1])
+        self.alpha=(np.dot([alpha[0]*V[0],alpha[1]*V[1]],chi)+ex['dVdT'])/self.V
+        if (self.FeX):
+            self.alphaC=-(MX/self.M0-(ex['dVdchi']+self.eM2.V-self.eM1.V)/self.V)/dxdchi
+        else:
+            self.alphaC=-((MX-MFe)/self.M0-(ex['dVdchi']+self.eM2.V-self.eM1.V)/self.V)/dxdchi
+        self.KT=-self.V/(-np.dot([V[0]/KT[0],V[1]/KT[1]],chi)+ex["dVdp"])
         self.gamma=1/(1E-3*self.Cp/(self.alpha*self.KT*self.V)-self.alpha*T)
         self.KS=self.KT*(1+self.alpha*self.gamma*T)
         self.CV=1E+3*self.alpha*self.V*self.KT/self.gamma
         self.rho=1E+3*self.M0/self.V
         self.vp=np.sqrt(1E+9*self.KS/self.rho)
-        return {'M':self.M0,'V':self.V,'rho':self.rho,'alpha':self.alpha,'KT':self.KT,'KS': self.KS, 'gamma':self.gamma,'Cp': self.Cp, 'CV':self.CV,'vp':self.vp,'S':0,'GE':0}        
+        return {'M':self.M0,'V':self.V,'rho':self.rho,'alpha':self.alpha,'alphaC':self.alphaC,'KT':self.KT,'KS': self.KS, 'gamma':self.gamma,'Cp': self.Cp, 'CV':self.CV,'vp':self.vp,'S':0,'GE':0}        
     
 def TmFeA(p): # Fe liquidus from Anzellini et al. p in GPa
      return 495.4969600595926*(22.19 + p)**0.42016806722689076 
 
 def TeFeS(p): # Fe-S eutectic to 13.5GPa
      return 1301.4062277227729 - 11.24327722772283*p
+     
+def TmFeS(p): # FeS melting T from Boehler 1992
+          return 774.1353011127796*(9.938473089891751 + p)**0.2800438973467849
 
 def xeFeS(p): # eutectic concetration 
     return 0.11 + 0.187*np.exp(-0.065*p)
+
+def TeFeS(p): #eutectic temperatur for Fe-S for p<=10GPa
+    return 1348.1385906216763 - 25.746183402852235*p - 0.37593441022701973*p**2 + 0.11225946350331356*p**3
+
+def deltSFeS(T): #entropy difference between solid and liquif FeS, data is from NIST at 1bar in J/K/mol
+    return -191.00037241868853 - 35.5021515055/T**2 - 0.085561502*T + 0.000024360150336031002*T**2 - 3.368803973666667e-14*T**3 + 33.276999999999994*np.log(T)
 
 def w2aS(x):
     MolarMassFe = param['MFe']
     MolarMassS = param['MS']
     return MolarMassFe*x/(MolarMassS+x*(MolarMassFe-MolarMassS))
+
+def a2wS(chi):
+    MolarMassFe = param['MFe']
+    MolarMassS = param['MS']
+    return MolarMassS*chi/((1-chi)*MolarMassFe+chi*MolarMassS)
+    
+def w2aC(x):
+    MolarMassFe = param['MFe']
+    MolarMassC = param['MC']
+    return MolarMassFe*x/(MolarMassC+x*(MolarMassFe-MolarMassC))
+
+def a2wC(chi):
+    MolarMassFe = param['MFe']
+    MolarMassC = param['MC']
+    return MolarMassC*chi/((1-chi)*MolarMassFe+chi*MolarMassC)
+        
+# melting entropy of FeS. based on NIST data and p correction computed from the eos of l-FeS and FeS V in J/K/mol
+def deltaSFeS(p,T):
+    return 191.00+0.59351*p + 0.01875*p**2+35.715/T**2+ 0.085561502*T -0.000024360150336031002*T**2 +3.3688e-14*T**3-33.277*np.log(T)
+    
+
+class liquidus_FeC():
+    def Tm(self,x,p):
+        return 1815.9204037761742 + 33.02116601402314*p - 0.14106094175200162*p**2 - 5966.69048383755*x - 462.9482836690786*p*x - 82364.03986267837*x**2   
+    def xm(self,p,T):
+        return -0.03622145352380437 - 0.0028103786824986376*p + np.sqrt(0.023359484406174837 + 0.0006045092717389759*p + 6.1855762886190024e-6*p**2 - 0.000012141220873420637*T)
+    def dTmdp(self,x,p):
+        return 33.02116601402314 - 0.28212188350400325*p - 462.9482836690786*x
+    def dTmdx(self,x,p):
+        return -5966.69048383755 - 462.9482836690786*p - 164728.07972535674*x
+    def xg(self,p): # end of stability
+        return (4.141168333784652 - 0.029191154729740085*p - 0.00007155253361236151*p**2 + 5.560994462321111e-7*p**3)/100
+    def Txg(self,p): # T at end of stability
+        return 1438.4788469746404 + 14.208654298581639*p + 0.29975569717355*p**2 - 0.004318805371788956*p**3
+
+class liquidus_FeC_Graphite():
+    def Tm(self,x,p):
+        return -973.1949862972292 - 159.45023271197547*p - 2.649550966097275*p**2 + 64212.43996334035*x + 1271.4356827385757*p*x - 222434.25817139592*x**2
+    def dTmdp(self,x,p):
+        return -159.45023271197562 - 5.299101932194669*p + 1271.4356827385748*x
+    def dTmdx(self,x,p):
+        return 64212.43996334037 + 1271.4356827385748*p - 444868.5163427913*x
+    def xg(self,p): # lowest C at p where graphite is stable
+        return 0.0437052 + 0.00355333*p
+    def Txg(self,p): # lowest T at p where graphite is stable
+        return 1431.19 + 45.3298*p
+        
+class liquidus_FeC_Diamond():
+    def Tm(self,x,p):
+        return -1056.724185015652 - 41.49776305723899*p - 0.1591003751379832*p**2 + 56794.53646733748*x + 529.2471978145542*p*x - 196473.6197645237*x**2
+    def dTmdp(self,x,p):
+        return -41.49776305723899 - 0.3182007502759664*p + 529.2471978145542*x
+    def dTmdx(self,x,p):
+        return 56794.53646733748 + 529.2471978145542*p - 392947.2395290474*x
+    def xg(self,p): # lowest C at p where diamond is stable
+        return 0.054576 + 0.00132377*p
+    def Txg(self,p): # lowest T at p where diamond is stable
+        return 1449.38 + 36.8943*p
+    def pMin(self): # lowest p where diamond is stable
+            return 5.3
+
+class liquidus_FeSi():
+    TmFe=lambda self, p: 722.0158515406479*(14.074110777986746 + p)**0.34282748705991717
+    TmFeSiE=lambda self, p:1538*(0.999999594484996 + 0.040551500405515*p)**0.4608294930875576
+    xE=0.125
+    dTmFedp=lambda self, p: 247.52688000110655/(14.074110777986746 + p)**0.6571725129400828
+    dTmFeSiEdp=lambda self, p: 28.741109504000953/(0.999999594484996 + 0.040551500405515*p)**0.5391705069124424
+    
+    def Tm(self,x,p):
+        return self.TmFe(p)-(self.TmFe(p)-self.TmFeSiE(p))*x/self.xE
+    def dTmdp(self,x,p):
+        return self.dTmFedp(p)-(self.dTmFedp(p)-self.dTmFeSiEdp(p))*x/self.xE
+    def dTmdx(self,x,p):
+        return -(self.TmFe(p)-self.TmFeSiE(p))/self.xE
+    def xg(self,p): # lowest C at p where diamond is stable
+        return 0
+    def Txg(self,p): # lowest T at p where diamond is stable
+        return 0
+    def pMin(self): # lowest p where diamond is stable
+            return 0    
     
 class liquidusFeS:
     def __init__(self,deltaMu):
         self.deltaMu=deltaMu
         
     def __call__(self,x,p):
-        return optimize.brentq(lambda T: self.deltaMu(w2aS(x),p,T), TeFeS(p)-20,TmFeA(p)+20) # bracket by eutectic and Fe liquidus
-    
+        if (x<xeFeS(p)):
+            return optimize.brentq(lambda T: self.deltaMu(w2aS(x),p,T), TeFeS(p)-20,TmFeA(p)+100) # bracket by eutectic and Fe liquidus
+        else:
+            return TeFeS(p)+(TmFeS(p)-TeFeS(p))*(xeFeS(p)-x)/(xeFeS(p)-a2wS(0.5))
 
-# Initialize the EoS 
+def rhoElFeSPommier(x,T): #x in wt
+    return 92.71381967698574 + 1189.0330473455936*x + 2404.678175564527*x**2
+    
+def kFeSPommier(x,T): #x in wt
+    return (param['LorenzNumber']*T)/rhoElFeSPommier(x,T)
+
+def rhoElFeSWagle(x,T): # x in wt
+    return 75 + 127*x + 327*x**2
+    
+def kFeSWagle(x,T): # x in wt
+    return (param['LorenzNumber']*T)/rhoElFeSWagle(x,T)
+
+def rhoElFeSVostryakov(x,T): # x in wt
+    return 71.2 + 0.0434*(-273 + T) + (21522.841095487103*x)/(32.06 + 23.79*x)
+    
+def kelFeSVostryakov(x,T): # x in wt
+    return (param['LorenzNumber']*T)/rhoElFeSVostryakov(x,T)
+
+def rhoElFeCZhang(x,T): # x in wt
+    return 75 + (2420.6*x)/(0.27401+x)  
+    
+def kFeCZhang(x,T): # x in wt
+    return (param['LorenzNumber']*T)/rhoElFeCZhang(x,T)       
+
+def rhoElFeCOno(x,T): # x in wt
+    return 71.2+0.434*(T-273)+102.72*a2wC(x)
+    
+def kFeCOno(x,T): # x in wt
+    return (param['LorenzNumber']*T)/rhoElFeCOno(x,T)       
+    
+# Initialize EoS 
 fccFe=eosAndersonGrueneisen(M0=param["MFe"],p0=1.e-5,T0=298,V0=6.82,alpha0=7.e-5,KT0=163.4,KTP0=5.38,deltaT=5.5,kappa=1.4,GibbsE=(lambda T: 16300.921-395355.43/T-2476.28*np.sqrt(T)+ 381.47162*T+0.000177578*T**2-52.2754*T*np.log(T)))        
-liquidFe=eosAndersonGrueneisen(M0=param['MFe'],p0=1E-5,T0=298,V0=6.88,alpha0=9E-5,KT0=148,KTP0=5.8,deltaT=5.1,kappa=0.56,GibbsE=(lambda T: 300-9007.3402+290.29866*T-46*T*np.log(T)))             
+liquidFe=eosAndersonGrueneisen(M0=param['MFe'],p0=1E-5,T0=298,V0=6.88,alpha0=9E-5,KT0=148,KTP0=5.8,deltaT=5.1,kappa=0.56,GibbsE=(lambda T: 300-9007.3402+290.29866*T-46*T*np.log(T)))                                                                                           
 liquidFeS=eosAndersonGrueneisen(M0=param['MFeS'],p0=1E-5,T0=1650,V0=22.96,alpha0=11.9e-5, KT0=17.019,KTP0=5.922, deltaT=5.922,kappa=1.4,gamma0=1.3,q=0)
 
-def VexFeFeS(chi,p,T):
+FeSV=eosAndersonGrueneisen(M0=param['MFeS'],p0=1E-5,T0=1000,V0=18.042,alpha0=10.42e-5, KT0=54.3,KTP0=4, deltaT=2.0679,kappa=1.4)
+
+graphite=eosDinsdale(M0=param['MC'],V0=5.259e-6,KT0=33.33,KTP0=12,a0=2.32e-5,a1=5.7e-9,a=-17368.441,b=170.73,c=-24.3,d=-0.4723e-3,e=2562600,f=-2.643e8,g=1.2e10)
+diamond=eosDinsdale(M0=param['MC'],V0=3.412e-6,KT0=588.235,KTP0=5,a0=2.43e-6,a1=1e-8,a=-17368.441+1009,b=170.73+4.88,c=-24.3-0.01,d=-0.4723e-3,e=2562600+135400.,f=-2.643e8+33.05e5,g=1.2e10-9.e8)
+liquidC=eosDinsdale(M0=param['MC'],V0=3.089e-6,KT0=42.034,KTP0=10.1,a0=2.32e-5,a1=5.7e-9,a=-17368.441+117369,b=170.73-24.63,c=-24.3,d=-0.4723e-3,e=2562600,f=-2.643e8,g=1.2e10)
+
+
+liquidFeS_x=eosAndersonGrueneisen(M0=param['MFeS'],p0=1E-5,T0=1650,V0=22.96,alpha0=11.9e-5, KT0=17.019,KTP0=5.922, deltaT=5.922,kappa=1.4,GibbsE=(lambda T: 17159.23 + 0.2151505/T + 328.3704*T - 1.e-9*T ** 2 + 1.120103e-13*T**3-5.34326e-18*T**4-62.5508*T*np.log(T)))
+
+
+def muFeSolid(chi,p,T):
+    # chi is mol fraction of S
+    fccFe.eos(p,T)
+    return [fccFe.GE,0]
+
+def muFeLiquid(chi,p,T):
+    # chi is mol fraction of S
+    y=chi/(1-chi) # mol fraction of Fe-S pseudo compound
+    RGas=param['RGas']
+    L1=53700.86652423554 - 3815.484280673008*p - 29.091372419282234*T
+    L2=25339.70399255915 - 2951.106280178772*p
+    liquidFe.eos(p,T)
+    return [liquidFe.GE+RGas*T*np.log(1-y)+y**2 *(2*y-1)*L1 +2*(1-y)*y**2 *L2,((1 + y)**2*(RGas*T - 2*(-1 + y)*y*(L1 - 3*L1*y + L2*(-2 + 3*y))))/(-1 + y)]
+   
+    
+def muSLiquid(chi,p,T):
+    # chi is mol fraction of S
+    y=chi/(1-chi) # mol fraction of Fe-S pseudo compound
+    RGas=param['RGas']
+    L1=53700.86652423554 - 3815.484280673008*p - 29.091372419282234*T
+    L2=25339.70399255915 - 2951.106280178772*p
+    liquidFe.eos(p,T)
+    liquidFeS_x.eos(p,T)
+    return [liquidFeS_x.GE-liquidFe.GE+RGas*T*np.log(y/(1-y))+y*(2-3*y)*L1 +(1-y)*(1-3*y) *L2,(1 + y)**2*(L1*(2 - 6*y) + L2*(-4 + 6*y) + (RGas*T)/(y - y**2))]
+   
+
+
+
+def exFeFeS(chi,p,T):
     W11=-9.91275
     W12=0.731385
     W21=-1.32521
     W22=1.72716
-    return (1-chi[1])*chi[1]*np.array([chi[1]*(W11+W12*np.log(1.5+p))+chi[0]*(W21+W22*np.log(1.5+p)),chi[1]*W12/(1.5+p)+chi[0]*W22/(1.5+p),0])
-                                  
-liquidCore=solution(liquidFe,liquidFeS,VexFeFeS) #Class to calculate properties from
+    
+    W11 = -12.418572079527602
+    W21 = -2.3752788584923823
+    W22 = 1.9348238292453082
+    W12 = 1.0196634224150105
+    V=np.log(1.5+p)
+    dVdp=1/(1.5+p)
+    return {'V':(1-chi[1])*chi[1]*(chi[1]*(W11+W12*V)+chi[0]*(W21+W22*V)),
+            'dVdp':(1-chi[1])*chi[1]*(chi[1]*W12*dVdp+chi[0]*W22*dVdp),
+            'dVdT':0,
+            'dVdchi':-(chi[1]*(-2+3*chi[1])*(W11+W12*V))+(-1+chi[1])*(-1+3*chi[1])*(W21+W22*V)}
+    
+                              
+liquidCore=solution(liquidFe,liquidFeS,exFeFeS)
+
+liquidCoreIdeal=solution(liquidFe,liquidFeS,lambda chi,p,T:{'V':0,'dVdp':0,'dVdT':0,'dVdchi':0})
+
+liquidCoreFeS=solution(liquidFe,liquidFeS,exFeFeS)
+
+liquidCoreFeSIdeal=solution(liquidFe,liquidFeS,lambda chi,p,T:{'V':0,'dVdp':0,'dVdT':0,'dVdchi':0})
+
+liquidCoreFeCideal=solution(liquidFe,liquidC,lambda chi,p,T:{'V':0,'dVdp':0,'dVdT':0,'dVdchi':0},FeX=False)    
 
 def deltaMu(chi,p,T): # chemical potentals are equal at melting, assume no S in solid Fe
     y=chi/(1-chi) # mol fraction of Fe-S pseudo compound
@@ -237,31 +476,3 @@ def deltaMu(chi,p,T): # chemical potentals are equal at melting, assume no S in 
 #Melting temperature function to call from model. Takes mass fraction and pressure as arguments (see liquidusFeS).
 liquidus=liquidusFeS(deltaMu)
 
-
-
-print('--------------------------------------')
-print('Melting temperature : ',liquidus(S,P))
-
-print('')
-
-print('liquid properties:')
-liq_prop = liquidCore(S,P,T)
-for key in liq_prop.keys():
-    print(key,': ', liq_prop[key])
-
-print('')
-
-print('Solid Fe properties:')
-solid_prop = fccFe(P,T)
-for key in solid_prop.keys():
-    print(key,': ', solid_prop[key])
-
-print('')
-
-print('Liquid Fe properties:')
-liquid_fe_prop = liquidFe(P,T)
-for key in liquid_fe_prop.keys():
-    print(key,': ', liquid_fe_prop[key])
-
-
-print('--------------------------------------')

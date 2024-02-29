@@ -13,7 +13,7 @@ Na = 6.022140857e23   #Avogadros Constant
 Rg = 8.31446261815324 #Gas constant
 
 core         = True  #True/False. Include core in solution
-stable_layer = True  #True/False. Include stable layer in solution
+stable_layer = False  #True/False. Include stable layer in solution
 mantle       = False #True/False. Include mantle in solution
 
 #core: leeds parameters
